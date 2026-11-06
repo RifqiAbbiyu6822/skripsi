@@ -193,6 +193,6 @@ if result is not None:
     with tab_signal:
         render_signal_tab(raw_signal, fs, sig_names, resampled, sr)
     with tab_flow:
-        render_model_flow_tab(model, ptb_config, CLASSES, probs, thresholds, preds)
+        render_model_flow_tab(model, ptb_config, CLASSES, model_input, probs, thresholds, preds)
 else:
     render_empty_state()

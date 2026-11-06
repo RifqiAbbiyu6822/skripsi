@@ -15,30 +15,47 @@ import torch
 # ---------------------------------------------------------------------------
 # helper: ambil info arsitektur & shape asli dari model
 # ---------------------------------------------------------------------------
-def _trace_shapes(model, n_leads: int, length: int) -> dict:
-    """Jalankan 1 input dummy + forward hook untuk catat shape output tiap tahap."""
+def _trace_real(model, model_input) -> tuple:
+    """
+    Jalankan model pada sinyal ASLI yang diunggah (model_input, shape (12, L), sudah
+    melewati preprocessing yang sama dengan inference). Forward hook mencatat:
+      - shape output tiap tahap
+      - rata-rata bobot SE (gate sigmoid) tiap stage untuk rekaman ini
+    """
     device = next(model.parameters()).device
-    shapes, hooks = {}, []
+    x = torch.as_tensor(model_input, dtype=torch.float32).unsqueeze(0).to(device)
 
-    def make_hook(name):
-        def hook(_module, _inp, out):
+    shapes, hooks = {}, []
+    se_vals = {i: [] for i in range(4)}
+
+    def shape_hook(name):
+        def hook(_m, _i, out):
             shapes[name] = tuple(out.shape)
         return hook
 
+    def se_hook(stage_idx):
+        def hook(_m, _i, out):
+            se_vals[stage_idx].append(float(out.detach().mean().item()))
+        return hook
+
     for i in range(4):
-        hooks.append(model.downsample_layers[i].register_forward_hook(make_hook(f"down{i}")))
-        hooks.append(model.stages[i].register_forward_hook(make_hook(f"stage{i}")))
+        hooks.append(model.downsample_layers[i].register_forward_hook(shape_hook(f"down{i}")))
+        hooks.append(model.stages[i].register_forward_hook(shape_hook(f"stage{i}")))
+        for blk in model.stages[i]:
+            hooks.append(blk.se.fc.register_forward_hook(se_hook(i)))
 
     was_training = model.training
     model.eval()
     try:
         with torch.no_grad():
-            model(torch.zeros(1, n_leads, length, device=device))
+            model(x)
     finally:
         for h in hooks:
             h.remove()
         model.train(was_training)
-    return shapes
+
+    se_means = [sum(v) / len(v) if v else float("nan") for v in se_vals.values()]
+    return shapes, se_means
 
 
 def _read_arch(model) -> dict:
@@ -105,23 +122,22 @@ DEFAULT_COLORS = {
 }
 
 
-def render_model_flow_tab(model, ptb_config, classes, probs, thresholds, preds,
+def render_model_flow_tab(model, ptb_config, classes, model_input, probs, thresholds, preds,
                           class_labels_long=None, class_colors=None):
     # label & warna opsional: kalau app.py nggak punya, pakai default di modul ini
     class_labels_long = class_labels_long or DEFAULT_LABELS_LONG
     class_colors = class_colors or DEFAULT_COLORS
 
     arch = _read_arch(model)
-    shapes = _trace_shapes(model, ptb_config.n_leads, ptb_config.target_length)
+    shapes, se_means = _trace_real(model, model_input)
 
     st_ = arch["stem"]
-    n_leads = ptb_config.n_leads
-    length = ptb_config.target_length
+    n_leads, length = model_input.shape
 
     st.markdown("### Alur Kerja Model")
     st.caption(
-        "Penjelasan ini dibaca langsung dari model yang lagi dipakai, jadi angka kernel, "
-        "channel, dan shape di bawah sesuai dengan checkpoint yang dimuat."
+        "Penjelasan ini dibaca langsung dari model yang lagi dipakai dan dijalankan pada rekaman "
+        "yang kamu unggah, jadi kernel, channel, dan shape di bawah sesuai checkpoint dan sinyal aslinya."
     )
 
     # ---------- 1. ringkasan alur ----------
@@ -188,7 +204,7 @@ def render_model_flow_tab(model, ptb_config, classes, probs, thresholds, preds,
     })
     st.dataframe(pd.DataFrame(rows).astype(str), width="stretch", hide_index=True)
     st.caption(
-        "Kolom terakhir itu shape asli hasil forward 1 sampel dummy, bukan hitungan manual. "
+        "Kolom terakhir itu shape asli hasil forward pada rekaman yang kamu unggah, bukan hitungan manual atau data contoh. "
         "Panjang sinyal makin pendek tiap downsampling, tapi jumlah channel makin banyak."
     )
 
@@ -209,7 +225,7 @@ Satu blok dikerjakan berurutan seperti ini (angka diambil dari model):
 7. **SE block**: GAP → Linear (C → C/16) → ReLU → Linear (C/16 → C) → Sigmoid, hasilnya dikali ke tiap channel.
 8. **Residual + DropPath**: output ditambah input awal, dan sebagian blok dilewati secara acak saat training (stochastic depth).
 
-Ukuran bottleneck SE (reduction 16, minimal 4) tiap stage:
+Ukuran bottleneck SE (reduction 16, minimal 4) tiap stage, plus rata-rata bobot SE yang muncul pada rekamanmu (0 = channel ditekan, 1 = dilewatkan penuh):
 """
         )
         se_df = pd.DataFrame([{
@@ -218,6 +234,7 @@ Ukuran bottleneck SE (reduction 16, minimal 4) tiap stage:
             "Channel (C)": s["dim"],
             "SE: C → C/r": f"{s['dim']} → {s['se_hidden']} → {s['dim']}",
             "Drop path (blok awal → akhir)": f"{s['dp_first']:.3f} → {s['dp_last']:.3f}",
+            "Rata-rata bobot SE (rekaman ini)": f"{se_means[i]:.3f}",
         } for i, s in enumerate(arch["stages"])])
         st.dataframe(se_df, width="stretch", hide_index=True)
 
