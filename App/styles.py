@@ -7,7 +7,7 @@ Design tokens
   Spacing    grid 8pt (mikro 4pt); prosa maks 70ch
   Type       Instrument Sans, 3 bobot (400 / 500 / 600)
   Viewport   narrow 375 / medium 768 / wide 1280 (satu breakpoint: < 768)
-  Motion     150 / 200 / 320ms, hanya opacity dan transform
+  Motion     100 / 150 / 200 / 300ms, enter ease-out, exit ease-in, hanya opacity dan transform
 """
 import streamlit as st
 
@@ -25,7 +25,7 @@ CUSTOM_CSS = """
 
   /* spacing (8pt, mikro 4pt) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px;
-  --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 80px;
+  --s-6: 32px; --s-7: 40px; --s-8: 56px; --s-9: 72px;
   --prose: 70ch;
 
   /* type */
@@ -37,11 +37,13 @@ CUSTOM_CSS = """
   /* viewport */
   --vp-narrow: 375px; --vp-medium: 768px; --vp-wide: 1280px;
   --hit: 44px;
-  --gutter: clamp(16px, 5vw, 72px);
+  --gutter: clamp(16px, 3.5vw, 64px);
 
   /* motion */
-  --motion-150: 150ms; --motion-200: 200ms; --motion-320: 320ms;
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --motion-100: 100ms; --motion-150: 150ms; --motion-200: 200ms; --motion-300: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);   /* enter */
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);    /* exit */
+  --ease: var(--ease-out);
 }
 
 html, body, [class*="css"], .stApp {
@@ -60,9 +62,10 @@ section[data-testid="stSidebar"] { display: none !important; }
 
 .block-container {
   width: 100%;
-  max-width: min(var(--vp-wide), 100%) !important;
-  padding: var(--s-7) var(--gutter) var(--s-9) var(--gutter) !important;
+  max-width: none !important;   /* konten mengisi lebar layar; kelompok teks dibatasi lewat --prose */
+  padding: var(--s-6) var(--gutter) var(--s-9) var(--gutter) !important;
 }
+div[data-testid="stHorizontalBlock"] { gap: var(--s-5) !important; }
 div.element-container { margin-bottom: 0 !important; }
 
 ::selection { background: rgba(233,231,226,0.22); color: var(--text); }
@@ -78,17 +81,20 @@ p { line-height: var(--leading-body); }
 [data-testid="stCaptionContainer"], .stCaption { color: var(--muted) !important; font-size: var(--text-secondary) !important; }
 
 /* --- Hero ---------------------------------------------------------------- */
-.hero { padding: 0; margin-bottom: var(--s-7); animation: riseIn var(--motion-320) var(--ease) both; }
+.hero { padding: 0; margin-bottom: var(--s-7); display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: var(--s-6) var(--s-8); align-items: center; animation: riseIn var(--motion-300) var(--ease-out) both; }
+.hero-copy { min-width: 0; }
 .hero-eyebrow { margin: 0 0 var(--s-4) 0; font-size: var(--text-meta); line-height: var(--leading-meta);
   letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); font-weight: var(--font-medium); }
 .hero-sub { color: var(--muted); font-size: var(--text-body); margin: var(--s-4) 0 0 0; max-width: var(--prose); line-height: var(--leading-body); }
 
-.ecg-trace-wrap { width: 100%; margin: var(--s-6) 0 0 0;
-  -webkit-mask-image: linear-gradient(90deg, #000 70%, transparent);
-  mask-image: linear-gradient(90deg, #000 70%, transparent); }
+.ecg-trace-wrap { width: 100%; margin: 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  animation: fadeIn var(--motion-300) var(--ease-out) var(--motion-100) both; }
 .ecg-trace-svg { width: 100%; height: auto; display: block; overflow: visible; }
 .ecg-trace-path { stroke: var(--text); stroke-opacity: 0.7; stroke-width: 1.4; stroke-linejoin: round;
-  stroke-dasharray: 1; stroke-dashoffset: 1; animation: ecgDraw 1.4s var(--ease) 0.15s forwards; }
+  }
 
 /* --- Section headings ------------------------------------------------------ */
 .section-title { font-size: var(--text-h3); font-weight: var(--font-medium); line-height: var(--leading-tight);
@@ -157,13 +163,13 @@ div[data-testid="stTabs"] [role="tabpanel"] { animation: riseIn var(--motion-200
 .scan-banner { margin: var(--s-5) 0 var(--s-2) 0; min-height: 40px; }
 .scan-track { height: 2px; background: var(--raised); overflow: hidden; border-radius: 2px; }
 .scan-fill { height: 100%; width: 100%; background: var(--text); transform-origin: left center;
-  transition: transform var(--motion-320) var(--ease); }
+  transition: transform var(--motion-300) var(--ease); }
 .scan-label { margin-top: var(--s-3); font-size: var(--text-secondary); color: var(--muted); }
 
 /* --- Recording summary (panel L1: border 1px + highlight) -------------------- */
 .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: 0 0 var(--s-6) 0; padding: 0;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--highlight);
-  overflow: hidden; animation: riseIn var(--motion-320) var(--ease) both; }
+  overflow: hidden; animation: riseIn var(--motion-300) var(--ease) both; }
 .meta div { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-4) var(--s-5);
   border-left: 1px solid var(--line); }
 .meta div:first-child { border-left: 0; }
@@ -171,7 +177,7 @@ div[data-testid="stTabs"] [role="tabpanel"] { animation: riseIn var(--motion-200
 .meta dd { margin: 0; font-size: var(--text-body); color: var(--text); font-weight: var(--font-medium); }
 
 /* --- Verdict + diagnosis rows ---------------------------------------------- */
-.verdict { margin: var(--s-6) 0 var(--s-6) 0; animation: riseIn var(--motion-320) var(--ease) both; }
+.verdict { margin: var(--s-2) 0 var(--s-5) 0; animation: riseIn var(--motion-300) var(--ease) both; }
 .verdict-label { font-size: var(--text-meta); line-height: var(--leading-meta); letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--faint); font-weight: var(--font-medium); margin: 0 0 var(--s-2) 0; }
 .verdict-value { display: flex; flex-wrap: wrap; gap: var(--s-2) 32px; margin: 0; font-size: clamp(1.75rem, 3vw, 2.25rem);
@@ -185,7 +191,7 @@ div[data-testid="stTabs"] [role="tabpanel"] { animation: riseIn var(--motion-200
 .dx-row { display: grid; grid-template-columns: minmax(160px, 240px) 1fr 64px minmax(112px, 144px);
   align-items: center; gap: var(--s-5); padding: var(--s-5); border-top: 1px solid var(--line);
   transition: background var(--motion-150) var(--ease);
-  animation: riseIn var(--motion-320) var(--ease) both; animation-delay: var(--d, 0s); }   /* --d diatur dari Python */
+  animation: riseIn var(--motion-200) var(--ease-out) both; animation-delay: var(--d, 0s); }   /* --d diatur dari Python */
 .dx-row:first-child { border-top: 0; }
 .dx-name { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
 .dx-code { display: inline-flex; align-items: center; gap: var(--s-3); font-size: var(--text-body); font-weight: var(--font-semibold); color: var(--muted); }
@@ -198,10 +204,10 @@ div[data-testid="stTabs"] [role="tabpanel"] { animation: riseIn var(--motion-200
 .dx-bar { position: relative; height: 4px; background: var(--raised); border-radius: 4px; }
 .dx-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--c); border-radius: 4px; opacity: 0.4;
   transform-origin: left center;
-  animation: barGrow var(--motion-320) var(--ease) both; animation-delay: calc(var(--d, 0s) + 160ms); }
+  animation: barGrow var(--motion-300) var(--ease) both; animation-delay: calc(var(--d, 0s) + 100ms); }
 .dx-row.active .dx-fill { opacity: 1; }
 .dx-tick { position: absolute; top: -4px; width: 1px; height: 12px; background: var(--text); opacity: 0;
-  animation: tickIn var(--motion-200) var(--ease) both; animation-delay: calc(var(--d, 0s) + 400ms); }
+  animation: tickIn var(--motion-200) var(--ease) both; animation-delay: calc(var(--d, 0s) + 200ms); }
 
 .dx-pct { text-align: right; font-size: var(--text-h3); font-weight: var(--font-medium); color: var(--muted); }
 .dx-row.active .dx-pct { color: var(--text); }
@@ -218,7 +224,7 @@ div[data-testid="stTabs"] [role="tabpanel"] { animation: riseIn var(--motion-200
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--s-4); margin-top: var(--s-7); }
 .step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--highlight);
   padding: var(--s-5); transition: border-color var(--motion-150) var(--ease);
-  animation: riseIn var(--motion-320) var(--ease) both; animation-delay: var(--d, 0s); }
+  animation: riseIn var(--motion-300) var(--ease) both; animation-delay: var(--d, 0s); }
 .step-num { font-size: var(--text-secondary); color: var(--faint); font-weight: var(--font-medium); }
 .step-title { font-size: var(--text-body); font-weight: var(--font-medium); color: var(--text); margin: var(--s-2) 0; }
 .step-desc { font-size: var(--text-secondary); color: var(--muted); line-height: var(--leading-body); margin: 0; }
@@ -233,18 +239,51 @@ div[data-testid="stTabs"] [role="tabpanel"] { animation: riseIn var(--motion-200
 .disclaimer { margin: var(--s-7) 0 0 0; padding-top: var(--s-4); border-top: 1px solid var(--line);
   font-size: var(--text-meta); line-height: var(--leading-meta); color: var(--faint); max-width: var(--prose); }
 
-/* --- Motion (hanya opacity, transform, dan dash offset garis dekoratif) --------------- */
+/* --- Loader: tombol sibuk (inline, 100ms-1s) ---------------------------------------------- */
+.stApp[data-test-script-state="running"] button[data-testid="stBaseButton-primary"] {
+  pointer-events: none; position: relative; }
+.stApp[data-test-script-state="running"] button[data-testid="stBaseButton-primary"]::after {
+  content: ""; position: absolute; right: var(--s-4); top: 50%; width: 16px; height: 16px; margin-top: -8px;
+  border: 2px solid rgba(15,16,18,0.25); border-top-color: #0F1012; border-radius: 50%;
+  opacity: 0; animation: spinIn var(--motion-150) var(--ease-out) var(--motion-100) forwards, spin 800ms linear var(--motion-100) infinite; }
+
+/* --- Loader: skeleton (> 1 dtk), geometri sama dengan hasil ------------------------------ */
+.sk { display: block; background: var(--raised); border-radius: var(--r-sm); }
+.sk-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin: 0 0 var(--s-6) 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.sk-meta > div { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-4) var(--s-5); border-left: 1px solid var(--line); }
+.sk-meta > div:first-child { border-left: 0; }
+.sk-line { height: 12px; width: 60%; } .sk-line.s { width: 40%; height: 10px; } .sk-line.l { height: 16px; width: 80%; }
+.sk-body { display: grid; grid-template-columns: minmax(220px, 2fr) 5fr; gap: var(--s-6); align-items: start; }
+.sk-verdict { display: flex; flex-direction: column; gap: var(--s-3); padding-top: var(--s-2); }
+.sk-verdict .sk-line.xl { height: 32px; width: 70%; }
+.sk-list { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.sk-row { display: grid; grid-template-columns: minmax(160px, 240px) 1fr 64px minmax(112px, 144px); gap: var(--s-5);
+  align-items: center; padding: var(--s-5); border-top: 1px solid var(--line); min-height: 90px; }
+.sk-row:first-child { border-top: 0; }
+.sk-row .sk-bar { height: 4px; }
+@media (prefers-reduced-motion: no-preference) {
+  .sk { animation: shimmer 1.5s ease-in-out infinite; }
+}
+
+/* --- Motion (hanya opacity dan transform) ------------------------------------------------- */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spinIn { to { opacity: 1; } }
+@keyframes shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
 @keyframes fadeIn { from { opacity: 0; } }
-@keyframes riseIn { from { opacity: 0; transform: translateY(8px); } }
+@keyframes riseIn { from { opacity: 0; transform: translateY(6px); } }
 @keyframes barGrow { from { transform: scaleX(0); } }
 @keyframes tickIn { to { opacity: 0.6; } }
-@keyframes ecgDraw { to { stroke-dashoffset: 0; } }
 
 /* --- Narrow (< 768px) ----------------------------------------------------------------- */
 @media (max-width: 767.98px) {
   :root { --gutter: 16px; }
   .block-container { padding-top: var(--s-5) !important; }
-  .hero { margin-bottom: var(--s-6); }
+  .hero { margin-bottom: var(--s-6); grid-template-columns: 1fr; }
+  .sk-body { grid-template-columns: 1fr; }
+  .sk-row { grid-template-columns: 1fr auto; gap: var(--s-3) var(--s-4); padding: var(--s-4); min-height: 0; }
+  .sk-row .sk-bar { grid-column: 1 / -1; grid-row: 2; }
+  .sk-row .sk-line.l:last-child { display: none; }
   .meta { grid-template-columns: 1fr 1fr; }
   .meta div { padding: var(--s-3) var(--s-4); }
   .meta div:nth-child(odd) { border-left: 0; }
@@ -265,8 +304,12 @@ div[data-testid="stTabs"] [role="tabpanel"] { animation: riseIn var(--motion-200
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-  .ecg-trace-path { stroke-dashoffset: 0; }
-  .dx-tick { opacity: 0.6; }
+  .hero, .meta, .verdict, .dx-row, .step, div[data-testid="stAlert"], div[data-testid="stTabs"] [role="tabpanel"] {
+    animation: fadeIn var(--motion-100) ease both !important; animation-delay: 0ms !important; }
+  .dx-fill { animation: none !important; }
+  .dx-tick { opacity: 0.6; animation: none !important; }
+  .scan-fill { transition: none !important; }
+  .stApp[data-test-script-state="running"] button[data-testid="stBaseButton-primary"]::after { animation: spinIn var(--motion-100) ease forwards; }
 }
 """
 

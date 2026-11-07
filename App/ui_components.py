@@ -1,5 +1,6 @@
 """Komponen tampilan (HTML/Streamlit) yang dipakai halaman utama."""
 import html
+import time
 
 import streamlit as st
 
@@ -25,19 +26,39 @@ def render_ecg_trace():
 
 def render_hero():
     st.markdown(
-        f'<header class="hero">'
+        f'<header class="hero"><div class="hero-copy">'
         f'<p class="hero-eyebrow">ConvNeXt-1D · Squeeze-and-Excitation · PTB-XL</p>'
         f'<h1>{HERO_TITLE}</h1>'
-        f'<p class="hero-sub">{HERO_SUBTITLE}</p>'
+        f'<p class="hero-sub">{HERO_SUBTITLE}</p></div>'
         f'{render_ecg_trace()}'
         f'</header>',
         unsafe_allow_html=True,
     )
 
 
+class DebouncedProgress:
+    """Banner progres yang baru dipasang setelah 100 ms sejak proses dimulai.
+
+    Proses < 100 ms tidak menampilkan loader sama sekali (tanpa kedip); setelahnya
+    banner tampil dengan tinggi tetap sehingga layout tidak bergeser.
+    """
+    DELAY = 0.1
+
+    def __init__(self, placeholder):
+        self.placeholder = placeholder
+        self.t0 = time.monotonic()
+
+    def show(self, label, pct):
+        if time.monotonic() - self.t0 >= self.DELAY or pct >= 56:   # 56 = tahap memuat model (paling lambat)
+            render_progress(self.placeholder, label, pct)
+
+    def clear(self):
+        self.placeholder.empty()
+
+
 def render_progress(placeholder, label, pct):
     placeholder.markdown(
-        f'<div class="scan-banner"><div class="scan-track">'
+        f'<div class="scan-banner" role="status" aria-live="polite"><div class="scan-track">'
         f'<div class="scan-fill" style="transform:scaleX({pct / 100:.2f});"></div></div>'
         f'<div class="scan-label">{label}</div></div>',
         unsafe_allow_html=True,
@@ -78,7 +99,7 @@ def render_diagnosis_row(index, prob, threshold, active):
     pct = max(0.0, min(1.0, prob)) * 100
     thr = max(0.0, min(1.0, threshold)) * 100
     state = "Terdeteksi" if active else "Di bawah ambang"
-    delay = 0.06 * index   # stagger antar baris; bar dan tick menyusul lewat CSS
+    delay = 0.04 * index   # stagger antar baris (maks 160 ms); bar dan tick menyusul lewat CSS
     return (
         f'<div class="dx-row{" active" if active else ""}" style="--c:{color}; --d:{delay:.2f}s;">'
         f'<div class="dx-name"><span class="dx-code"><i></i>{code}</span>'
@@ -115,15 +136,37 @@ def render_meta(fs, n_samples, n_found, device):
 
 
 def render_classification_tab(active_labels, probs, thresholds, preds):
-    st.markdown(render_verdict(active_labels), unsafe_allow_html=True)
+    """Dua kolom di layar lebar (ringkasan kiri, daftar kelas kanan); menumpuk di layar sempit."""
+    left, right = st.columns([2, 5])
+    with left:
+        st.markdown(render_verdict(active_labels), unsafe_allow_html=True)
+        st.markdown(
+            '<p class="dx-note">Garis tegak pada setiap batang menandai ambang kelas tersebut. '
+            'Hasil ini adalah keluaran model, bukan diagnosis klinis.</p>',
+            unsafe_allow_html=True,
+        )
+    with right:
+        rows = "".join(
+            render_diagnosis_row(i, float(probs[i]), thresholds[c], preds[c])
+            for i, c in enumerate(CLASSES)
+        )
+        st.markdown(f'<div class="dx-list">{rows}</div>', unsafe_allow_html=True)
+
+
+def render_results_skeleton(placeholder):
+    """Skeleton dengan geometri yang sama dengan hasil (strip meta + verdict + 5 baris kelas)."""
+    meta = "".join('<div><span class="sk sk-line s"></span><span class="sk sk-line l"></span></div>' for _ in range(4))
     rows = "".join(
-        render_diagnosis_row(i, float(probs[i]), thresholds[c], preds[c])
-        for i, c in enumerate(CLASSES)
+        '<div class="sk-row"><div><span class="sk sk-line l"></span></div>'
+        '<span class="sk sk-bar"></span><span class="sk sk-line l"></span><span class="sk sk-line l"></span></div>'
+        for _ in CLASSES
     )
-    st.markdown(f'<div class="dx-list">{rows}</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="dx-note">Garis tegak pada setiap batang menandai ambang kelas tersebut. '
-        'Hasil ini adalah keluaran model, bukan diagnosis klinis.</p>',
+    placeholder.markdown(
+        '<div aria-busy="true" aria-label="Memuat hasil">'
+        f'<div class="sk-meta">{meta}</div>'
+        '<div class="sk-body"><div class="sk-verdict"><span class="sk sk-line s"></span>'
+        '<span class="sk sk-line xl"></span></div>'
+        f'<div class="sk-list">{rows}</div></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -140,7 +183,7 @@ def render_empty_state():
         ("4", "Hasil", "Ambang batas menentukan label aktif. Probabilitas tiap kelas dan sinyal 12-lead ikut ditampilkan."),
     ]
     steps_html = "".join(
-        f'<div class="step" style="--d:{0.06 * i:.2f}s;"><div class="step-num">{n}</div>'
+        f'<div class="step" style="--d:{0.04 * i:.2f}s;"><div class="step-num">{n}</div>'
         f'<div class="step-title">{t}</div><p class="step-desc">{d}</p></div>'
         for i, (n, t, d) in enumerate(steps)
     )

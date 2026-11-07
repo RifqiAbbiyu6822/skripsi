@@ -27,8 +27,8 @@ from preprocessing import build_model_input, prepare_leads
 from signal_plot import render_signal_tab
 from styles import inject_css
 from ui_components import (
-    abort_with_checks, render_classification_tab, render_empty_state, render_hero,
-    render_meta, render_progress, show_input_warnings,
+    DebouncedProgress, abort_with_checks, render_classification_tab, render_empty_state,
+    render_hero, render_meta, render_results_skeleton, show_input_warnings,
 )
 
 # set_page_config harus menjadi perintah Streamlit pertama.
@@ -58,7 +58,8 @@ input_format = st.radio(
     horizontal=True, label_visibility="collapsed",
 )
 
-c1, c2 = st.columns(2)
+# Tiga kolom: dua uploader + aksi. Di layar sempit Streamlit menumpuknya otomatis.
+c1, c2, c3 = st.columns([5, 5, 3], vertical_alignment="bottom")
 if input_format == FMT_WFDB:
     with c1:
         hea_file = st.file_uploader(".hea (header, wajib)", type=["hea"])
@@ -72,11 +73,14 @@ else:
         hea_file = st.file_uploader(".hea (header, wajib)", type=["hea"])
     dat_file = None
 
-run_btn = st.button("Jalankan klasifikasi", type="primary", use_container_width=True)
+with c3:
+    run_btn = st.button("Jalankan klasifikasi", type="primary", use_container_width=True)
 
 # ===========================================================================
 # Pipeline: baca -> validasi -> praproses -> inferensi
 # ===========================================================================
+
+skeleton_ph = st.empty()   # tempat skeleton hasil; berada tepat di atas area hasil
 
 if run_btn:
     if hea_file is None:
@@ -97,9 +101,8 @@ if run_btn:
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     progress_ph = st.empty()
-
-    def show_progress(label, pct):
-        render_progress(progress_ph, label, pct)
+    progress = DebouncedProgress(progress_ph)
+    show_progress = progress.show
 
     show_progress("Membaca header .hea (satuan & skala voltase)…", 8)
     hea_bytes = hea_file.getvalue()
@@ -135,10 +138,12 @@ if run_btn:
     missing = [l for l in LEAD_NAMES if l not in found_leads]
 
     show_progress("Memuat bobot model…", 56)
+    render_results_skeleton(skeleton_ph)   # pemuatan pertama bisa > 1 dtk: skeleton, bukan spinner tengah layar
     try:
         model, ptb_config = load_model_and_config(MODEL_PATH, device)
     except Exception as e:
         progress_ph.empty()
+        skeleton_ph.empty()
         st.error(f"Gagal memuat model: {e}")
         st.stop()
 
@@ -152,7 +157,9 @@ if run_btn:
         "raw_signal": raw_signal, "fs": fs, "sig_names": sig_names,
         "found_leads": found_leads, "missing": missing,
         "resampled": resampled, "sr": ptb_config.sampling_rate,
-        "leads_12": leads_12,                         # (N,12) mV, urutan LEAD_NAMES (sudah lewat gain/baseline/satuan .hea)
+        "model_input": model_input,          # <-- tambah ini
+        "ptb_config": ptb_config,            # <-- dan ini
+        "leads_12": leads_12,
         "hea_units": [
             {"name": s["name"], "unit": s["unit"], "unit_given": s["unit_given"],
              "gain": s["gain"], "gain_given": s["gain_given"],
@@ -160,12 +167,13 @@ if run_btn:
             for s in meta["sigs"]
         ],
         "probs": probs,
-        "input_warnings": warned(all_checks),   # hanya peringatan; tabel validasi lengkap tidak ditampilkan
+        "input_warnings": warned(all_checks),
         "device": device,
     }
 
     show_progress("Selesai", 100)
     progress_ph.empty()
+    skeleton_ph.empty()
     st.toast("Klasifikasi selesai")
 
 # ===========================================================================
@@ -179,11 +187,12 @@ if result is not None:
     found_leads, missing = result["found_leads"], result["missing"]
     resampled, sr = result["resampled"], result["sr"]
     probs = result["probs"]
-
+    model_input = result["model_input"]      # <-- tambah
+    ptb_config = result["ptb_config"]        # <-- tambah
     thresholds = load_thresholds(THRESHOLDS_PATH)
     preds = {c: bool(probs[i] >= thresholds[c]) for i, c in enumerate(CLASSES)}
     active_labels = [c for c in CLASSES if preds[c]]
-
+    model, _ = load_model_and_config(MODEL_PATH, result["device"]) 
     st.write("")
     st.markdown(
         render_meta(fs, raw_signal.shape[0], len(found_leads), result["device"]),
