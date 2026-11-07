@@ -152,6 +152,13 @@ if run_btn:
         "raw_signal": raw_signal, "fs": fs, "sig_names": sig_names,
         "found_leads": found_leads, "missing": missing,
         "resampled": resampled, "sr": ptb_config.sampling_rate,
+        "leads_12": leads_12,                         # (N,12) mV, urutan LEAD_NAMES (sudah lewat gain/baseline/satuan .hea)
+        "hea_units": [
+            {"name": s["name"], "unit": s["unit"], "unit_given": s["unit_given"],
+             "gain": s["gain"], "gain_given": s["gain_given"],
+             "baseline": s["baseline"], "factor": s["factor"]}
+            for s in meta["sigs"]
+        ],
         "probs": probs,
         "input_warnings": warned(all_checks),   # hanya peringatan; tabel validasi lengkap tidak ditampilkan
         "device": device,
@@ -191,7 +198,11 @@ if result is not None:
     with tab_dx:
         render_classification_tab(active_labels, probs, thresholds, preds)
     with tab_signal:
-        render_signal_tab(raw_signal, fs, sig_names, resampled, sr)
+        render_signal_tab(
+            raw_signal, fs, sig_names, resampled, sr,
+            preds=preds, leads_12=result.get("leads_12"), found_leads=found_leads,
+            hea_units=result.get("hea_units"),
+        )
     with tab_flow:
         render_model_flow_tab(model, ptb_config, CLASSES, model_input, probs, thresholds, preds)
 else:
