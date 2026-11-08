@@ -7,7 +7,8 @@ from plotly.subplots import make_subplots
 
 from constants import CLASS_COLORS, LEAD_NAMES
 from ecg_findings import (
-    CORNELL_FEMALE_MV, CORNELL_MALE_MV, FINDING_NOTES, SOKOLOW_LYON_MV, analyze_findings,
+    CORNELL_FEMALE_MV, CORNELL_MALE_MV, FINDING_NOTES, SOKOLOW_LYON_MV,
+    analyze_findings, hyp_decision,
 )
 
 BOX_CLASSES = ("MI", "STTC", "CD")          # kelas yang divisualisasikan sebagai bounding box
@@ -175,9 +176,31 @@ def _criterion_card(title, formula, value, threshold_txt, met):
         f'ambang {threshold_txt} · <span style="color:{badge[1]};font-weight:500;">{badge[0]}</span></div>'
         f'</div>'
     )
+    
+def _cornell_both_card(r_avl, s_v3, value, c_male, c_female):
+    color = CLASS_COLORS["HYP"]
 
+    def row(label, thr, met):
+        tag, col = ("memenuhi", "var(--bad)") if met else ("di bawah ambang", "var(--good)")
+        return (f'<div style="display:flex;justify-content:space-between;gap:12px;'
+                f'font-size:var(--text-secondary);color:var(--muted);margin-top:var(--s-1);">'
+                f'<span>{label} &gt; {thr:g} mV</span>'
+                f'<span style="color:{col};font-weight:500;">{tag}</span></div>')
 
-def _render_hyp_panel(findings, hea_units):
+    return (
+        f'<div style="flex:1 1 280px;background:var(--surface);border:1px solid var(--line);'
+        f'border-top:2px solid {color};border-radius:var(--r-md);padding:var(--s-4);">'
+        f'<div style="font-size:var(--text-meta);letter-spacing:.08em;text-transform:uppercase;'
+        f'color:var(--faint);font-weight:500;">Cornell voltage</div>'
+        f'<div style="font-size:var(--text-secondary);color:var(--muted);margin:var(--s-2) 0;">'
+        f'R aVL ({_fmt(r_avl)}) + S V3 ({_fmt(s_v3)}) · jenis kelamin tidak ada di .hea</div>'
+        f'<div style="font-size:1.75rem;font-weight:600;color:var(--text);line-height:1.2;">{value} '
+        f'<span style="font-size:var(--text-secondary);color:var(--muted);font-weight:400;">mV</span></div>'
+        f'{row("Laki-laki", CORNELL_MALE_MV, c_male)}{row("Perempuan", CORNELL_FEMALE_MV, c_female)}'
+        f'</div>'
+    )
+
+def _render_hyp_panel(findings, hea_units, sex=None):
     st.markdown('<p class="section-title" style="margin-top:var(--s-5);">HYP — kriteria voltase klinis</p>',
                 unsafe_allow_html=True)
     st.caption(FINDING_NOTES["HYP"] + " Amplitudo diambil dari sinyal dalam mV (setelah gain, baseline, "
@@ -206,24 +229,37 @@ def _render_hyp_panel(findings, hea_units):
         st.info("Lead yang dibutuhkan tidak tersedia: " + ", ".join(hyp["missing"]) + ".")
         return
 
-    sex = st.radio("Jenis kelamin (untuk ambang Cornell)", ["Laki-laki", "Perempuan"], horizontal=True,
-                   key="hyp_sex")
+    dec = hyp_decision(hyp, sex)
     cards = []
-    if "SL" in hyp:
+
+    # Sokolow-Lyon: hanya ditampilkan kalau memenuhi kriteria
+    if "SL" in hyp and dec and dec["sl_met"]:
         cards.append(_criterion_card(
             "Sokolow-Lyon", f"S V1 ({_fmt(hyp['S_V1'])}) + R V5/V6 maks ({_fmt(hyp['R_V56'])})",
-            _fmt(hyp["SL"]), f"&gt; {SOKOLOW_LYON_MV:g} mV", hyp["SL_met"]))
-    if "Cornell" in hyp:
-        thr = CORNELL_MALE_MV if sex == "Laki-laki" else CORNELL_FEMALE_MV
-        cards.append(_criterion_card(
-            "Cornell voltage", f"R aVL ({_fmt(hyp['R_aVL'])}) + S V3 ({_fmt(hyp['S_V3'])})",
-            _fmt(hyp["Cornell"]), f"&gt; {thr:g} mV ({sex.lower()})", hyp["Cornell"] > thr))
-    st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:var(--s-4);margin:var(--s-3) 0;">{"".join(cards)}</div>',
-                unsafe_allow_html=True)
+            _fmt(hyp["SL"]), f"&gt; {SOKOLOW_LYON_MV:g} mV", True))
+
+    # Cornell: pakai sex dari .hea kalau ada, kalau tidak ada tampilkan dua perbandingan dalam satu kartu
+    if "Cornell" in hyp and dec:
+        if sex in ("male", "female"):
+            thr = CORNELL_MALE_MV if sex == "male" else CORNELL_FEMALE_MV
+            label = "laki-laki" if sex == "male" else "perempuan"
+            cards.append(_criterion_card(
+                "Cornell voltage", f"R aVL ({_fmt(hyp['R_aVL'])}) + S V3 ({_fmt(hyp['S_V3'])})",
+                _fmt(hyp["Cornell"]), f"&gt; {thr:g} mV ({label}, dari .hea)", dec["cornell_met"]))
+        else:
+            cards.append(_cornell_both_card(
+                hyp["R_aVL"], hyp["S_V3"], _fmt(hyp["Cornell"]),
+                dec["c_male"], dec["c_female"]))
+
+    if cards:
+        st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:var(--s-4);margin:var(--s-3) 0;">{"".join(cards)}</div>',
+                    unsafe_allow_html=True)
+    else:
+        st.info("Tidak ada kriteria voltase (Sokolow-Lyon maupun Cornell) yang bisa ditampilkan untuk rekaman ini.")
+
     if hyp["missing"]:
         st.caption("Lead tidak ada di rekaman: " + ", ".join(hyp["missing"]) + " — kriteria terkait tidak dihitung.")
-
-
+        
 def render_signal_tab(raw_signal, fs, sig_names, resampled, sr,
                       preds=None, leads_12=None, found_leads=None, hea_units=None):
     preds = preds or {}

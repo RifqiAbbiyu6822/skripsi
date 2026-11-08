@@ -278,3 +278,21 @@ def analyze_findings(leads_12, fs, found_leads=None):
 
     return {"ok": True, "n_beats": nb, "hr": hr, "qrs_ms": qrs_ms, "lead_table": lead_table,
             "boxes": boxes, "sel": sel, "hyp": hyp}
+    
+    def hyp_decision(hyp, sex=None):
+        """Keputusan HYP dari kriteria voltase. sex: 'male', 'female', atau None.
+    Return None kalau kriteria tidak bisa dihitung (lead kurang)."""
+    if not hyp or not hyp.get("available"):
+        return None
+    sl_met = bool(hyp.get("SL_met"))
+    c = hyp.get("Cornell")
+    c_male = c is not None and c > CORNELL_MALE_MV
+    c_female = c is not None and c > CORNELL_FEMALE_MV
+    if sex == "male":
+        c_met = c_male
+    elif sex == "female":
+        c_met = c_female
+    else:  # sex tidak diketahui: salah satu ambang terpenuhi sudah cukup
+        c_met = c_male or c_female
+    return {"sex": sex, "sl_met": sl_met, "c_male": c_male, "c_female": c_female,
+            "cornell_met": c_met, "active": sl_met or c_met}

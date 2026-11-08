@@ -21,6 +21,7 @@ from constants import (
 )
 from model_flow_tab import render_model_flow_tab
 from ecg_io import check_header, parse_hea_meta, read_mat_record, read_wfdb_record
+from ecg_findings import analyze_findings, hyp_decision
 from ecg_validation import validate_signal
 from inference import load_model_and_config, load_thresholds, run_inference
 from preprocessing import build_model_input, prepare_leads
@@ -49,7 +50,7 @@ render_hero()
 st.markdown('<p class="section-title">Unggah rekaman</p>', unsafe_allow_html=True)
 st.markdown(
     '<p class="section-hint">File <b>.hea</b> wajib untuk kedua format. Isinya dipakai untuk menentukan '
-    'satuan dan skala voltase sinyal.</p>',
+    'satuan dan skala voltase sinyal, serta jenis kelamin pasien (kalau tercantum) untuk kriteria Cornell.</p>',
     unsafe_allow_html=True,
 )
 
@@ -157,9 +158,10 @@ if run_btn:
         "raw_signal": raw_signal, "fs": fs, "sig_names": sig_names,
         "found_leads": found_leads, "missing": missing,
         "resampled": resampled, "sr": ptb_config.sampling_rate,
-        "model_input": model_input,          # <-- tambah ini
-        "ptb_config": ptb_config,            # <-- dan ini
+        "model_input": model_input,
+        "ptb_config": ptb_config,
         "leads_12": leads_12,
+        "sex": meta.get("sex"),              # 'male' | 'female' | None (dari komentar .hea)
         "hea_units": [
             {"name": s["name"], "unit": s["unit"], "unit_given": s["unit_given"],
              "gain": s["gain"], "gain_given": s["gain_given"],
@@ -187,12 +189,28 @@ if result is not None:
     found_leads, missing = result["found_leads"], result["missing"]
     resampled, sr = result["resampled"], result["sr"]
     probs = result["probs"]
-    model_input = result["model_input"]      # <-- tambah
-    ptb_config = result["ptb_config"]        # <-- tambah
+    model_input = result["model_input"]
+    ptb_config = result["ptb_config"]
+    sex = result.get("sex")
+
     thresholds = load_thresholds(THRESHOLDS_PATH)
     preds = {c: bool(probs[i] >= thresholds[c]) for i, c in enumerate(CLASSES)}
+
+    gated = set()
+    if preds["HYP"] and result.get("leads_12") is not None:
+        try:
+            std_found = [l for l in found_leads if l in LEAD_NAMES] or None
+            hyp_findings = analyze_findings(result["leads_12"], fs, std_found)
+            dec = hyp_decision(hyp_findings["hyp"], sex) if hyp_findings.get("ok") else None
+        except Exception:
+            dec = None
+        if dec is not None and not dec["active"]:
+            preds["HYP"] = False
+            gated.add("HYP")
+
     active_labels = [c for c in CLASSES if preds[c]]
-    model, _ = load_model_and_config(MODEL_PATH, result["device"]) 
+    model, _ = load_model_and_config(MODEL_PATH, result["device"])
+
     st.write("")
     st.markdown(
         render_meta(fs, raw_signal.shape[0], len(found_leads), result["device"]),
@@ -205,12 +223,12 @@ if result is not None:
 
     tab_dx, tab_signal, tab_flow = st.tabs(["Klasifikasi", "Sinyal 12-lead", "Alur Model"])
     with tab_dx:
-        render_classification_tab(active_labels, probs, thresholds, preds)
+        render_classification_tab(active_labels, probs, thresholds, preds, gated)
     with tab_signal:
         render_signal_tab(
             raw_signal, fs, sig_names, resampled, sr,
             preds=preds, leads_12=result.get("leads_12"), found_leads=found_leads,
-            hea_units=result.get("hea_units"),
+            hea_units=result.get("hea_units"), sex=sex,
         )
     with tab_flow:
         render_model_flow_tab(model, ptb_config, CLASSES, model_input, probs, thresholds, preds)

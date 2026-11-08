@@ -2,13 +2,30 @@
 import os
 import shutil
 import tempfile
-
+import re
 import numpy as np
 
 from checks import EcgInputError, make_check as _chk
 
 UNIT_TO_MV = {"mv": 1.0, "uv": 1e-3, "µv": 1e-3, "μv": 1e-3, "microv": 1e-3, "v": 1e3, "nv": 1e-6}
+_SEX_RE = re.compile(r"(?i)\b(?:sex|gender|jenis\s*kelamin)\b\s*[:=]\s*([A-Za-z]+)")
+_MALE = {"male", "m", "laki", "lakilaki", "pria"}
+_FEMALE = {"female", "f", "perempuan", "wanita"}
 
+def _sex_from_comments(hea_text):
+    """Cari 'Sex: Male/Female' di baris komentar (#) .hea. None kalau tidak ada / tidak jelas."""
+    for line in hea_text.replace("\r", "").split("\n"):
+        s = line.strip()
+        if not s.startswith("#"):
+            continue
+        m = _SEX_RE.search(s)
+        if m:
+            v = m.group(1).lower()
+            if v in _MALE:
+                return "male"
+            if v in _FEMALE:
+                return "female"
+    return None
 
 def unit_factor_mv(unit):
     """Faktor pengali ke mV. None bila satuan tidak dikenali; 1.0 bila satuan tidak ditulis (default WFDB = mV)."""
@@ -37,7 +54,9 @@ def parse_hea_meta(hea_text):
     """Parse header WFDB. Tidak pernah melempar error; cek meta['header_ok'] dan jalankan check_header()."""
     lines = [l.strip() for l in hea_text.replace("\r", "").split("\n")
              if l.strip() and not l.strip().startswith("#")]
-    meta = {"record": "", "n_sig": None, "fs": None, "n_samples": None, "sigs": [], "header_ok": False}
+    meta = {"record": "", "n_sig": None, "fs": None, "n_samples": None, "sigs": [],
+            "header_ok": False, "sex": None}
+    meta["sex"] = _sex_from_comments(hea_text)  
     if not lines:
         return meta
     tok = lines[0].split()

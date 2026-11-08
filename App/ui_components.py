@@ -92,13 +92,22 @@ def show_input_warnings(checks):
 # Hasil klasifikasi
 # ---------------------------------------------------------------------------
 
-def render_diagnosis_row(index, prob, threshold, active):
-    """Satu baris per kelas: nama, bar probabilitas dengan tanda ambang, persen, status."""
+def render_diagnosis_row(index, prob, threshold, active, gated=False):
+    """Satu baris per kelas: nama, bar probabilitas dengan tanda ambang, persen, status.
+
+    gated=True: probabilitas model melewati ambang, tetapi label dibatalkan oleh
+    pemeriksaan kriteria voltase (khusus HYP).
+    """
     code = CLASSES[index]
     color = CLASS_COLORS[code]
     pct = max(0.0, min(1.0, prob)) * 100
     thr = max(0.0, min(1.0, threshold)) * 100
-    state = "Terdeteksi" if active else "Di bawah ambang"
+    if active:
+        state = "Terdeteksi"
+    elif gated:
+        state = "Tidak lolos kriteria voltase"
+    else:
+        state = "Di bawah ambang"
     delay = 0.04 * index   # stagger antar baris (maks 160 ms); bar dan tick menyusul lewat CSS
     return (
         f'<div class="dx-row{" active" if active else ""}" style="--c:{color}; --d:{delay:.2f}s;">'
@@ -135,8 +144,9 @@ def render_meta(fs, n_samples, n_found, device):
     return f'<dl class="meta">{inner}</dl>'
 
 
-def render_classification_tab(active_labels, probs, thresholds, preds):
+def render_classification_tab(active_labels, probs, thresholds, preds, gated=None):
     """Dua kolom di layar lebar (ringkasan kiri, daftar kelas kanan); menumpuk di layar sempit."""
+    gated = gated or set()
     left, right = st.columns([2, 5])
     with left:
         st.markdown(render_verdict(active_labels), unsafe_allow_html=True)
@@ -145,9 +155,16 @@ def render_classification_tab(active_labels, probs, thresholds, preds):
             'Hasil ini adalah keluaran model, bukan diagnosis klinis.</p>',
             unsafe_allow_html=True,
         )
+        if "HYP" in gated:
+            st.markdown(
+                '<p class="dx-note">HYP dibatalkan: probabilitas model melewati ambang, tetapi '
+                'kriteria voltase Sokolow-Lyon maupun Cornell tidak terpenuhi pada rekaman ini. '
+                'Detail pengukurannya ada di tab Sinyal 12-lead.</p>',
+                unsafe_allow_html=True,
+            )
     with right:
         rows = "".join(
-            render_diagnosis_row(i, float(probs[i]), thresholds[c], preds[c])
+            render_diagnosis_row(i, float(probs[i]), thresholds[c], preds[c], gated=(c in gated))
             for i, c in enumerate(CLASSES)
         )
         st.markdown(f'<div class="dx-list">{rows}</div>', unsafe_allow_html=True)
@@ -180,7 +197,7 @@ def render_empty_state():
         ("1", "Unggah", "File .hea wajib, ditambah .dat atau .mat. Berkas diperiksa apakah benar sinyal EKG."),
         ("2", "Praproses", "Sinyal dikonversi ke mV sesuai .hea, dipetakan ke 12 lead, di-resample, difilter, dan dinormalisasi seperti saat training."),
         ("3", "Klasifikasi", "ConvNeXt-1D dengan Squeeze-and-Excitation menghitung probabilitas untuk tiap kelas."),
-        ("4", "Hasil", "Ambang batas menentukan label aktif. Probabilitas tiap kelas dan sinyal 12-lead ikut ditampilkan."),
+        ("4", "Hasil", "Ambang batas menentukan label aktif. Khusus HYP, label hanya aktif kalau kriteria voltase (Sokolow-Lyon atau Cornell) juga terpenuhi."),
     ]
     steps_html = "".join(
         f'<div class="step" style="--d:{0.04 * i:.2f}s;"><div class="step-num">{n}</div>'
