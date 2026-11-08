@@ -276,11 +276,11 @@ def analyze_findings(leads_12, fs, found_leads=None):
         for b in range(nb):
             boxes["HYP"].append(mk("HYP", l, on_t[b], off_t[b], "QRS", txt, sel["HYP"]["meets"]))
 
-    return {"ok": True, "n_beats": nb, "hr": hr, "qrs_ms": qrs_ms, "lead_table": lead_table,
+        return {"ok": True, "n_beats": nb, "hr": hr, "qrs_ms": qrs_ms, "lead_table": lead_table,
             "boxes": boxes, "sel": sel, "hyp": hyp}
-    
-    def hyp_decision(hyp, sex=None):
-        """Keputusan HYP dari kriteria voltase. sex: 'male', 'female', atau None.
+        
+def hyp_decision(hyp, sex=None):
+    """Keputusan HYP dari kriteria voltase. sex: 'male', 'female', atau None.
     Return None kalau kriteria tidak bisa dihitung (lead kurang)."""
     if not hyp or not hyp.get("available"):
         return None

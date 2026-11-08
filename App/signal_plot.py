@@ -261,7 +261,7 @@ def _render_hyp_panel(findings, hea_units, sex=None):
         st.caption("Lead tidak ada di rekaman: " + ", ".join(hyp["missing"]) + " — kriteria terkait tidak dihitung.")
         
 def render_signal_tab(raw_signal, fs, sig_names, resampled, sr,
-                      preds=None, leads_12=None, found_leads=None, hea_units=None):
+                      preds=None, leads_12=None, found_leads=None, hea_units=None, sex=None):
     preds = preds or {}
     st.write("")
     c_show, c_zoom = st.columns(2)
